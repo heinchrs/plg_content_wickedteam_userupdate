@@ -1,0 +1,10 @@
+<changelogs>
+	<changelog>
+		<element>plg_content_wickedteam_userupdate</element>
+		<type>plugin</type>
+		<version>1.0.0</version>
+		<note>
+			<item>First version, adapted from correponding Kandanda userupdate plugin</item>
+		</note>
+	</changelog>
+</changelogs>

@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="plg_content_wickedteam_userupdate" default="main">
+
+    <property name="curdir" value="./" />
+
+    <property name="srcdir" value="./src" override="true" />
+
+    <property name="joomladir" value="./joomla" override="true" />
+
+    <property name="zipsdir" value=".release" override="true" />
+
+    <!-- Read project XML file -->
+    <xmlproperty file="${srcdir}/wickedteam_userupdate.xml"/>
+
+    <!-- Fileset for site files -->
+    <fileset dir="./src" id="plgfiles">
+        <include name="**" />
+        <exclude name="**/.git/**"/>
+        <exclude name="**/.vscode/**"/>
+        <exclude name="**/.release/**"/>
+        <exclude name="**/joomla/**"/>
+        <exclude name=".gitignore"/>
+        <exclude name="README.md"/>
+        <exclude name="build.xml"/>
+    </fileset>
+
+    <!-- fileset for zip -->
+    <fileset dir="src/" id="zipfiles">
+        <include name="**" />
+        <exclude name="**/.git/**"/>
+        <exclude name="**/.vscode/**"/>
+        <exclude name="**/.release/**"/>
+        <exclude name="**/joomla/**"/>
+        <exclude name=".gitignore"/>
+        <exclude name="README.md"/>
+        <exclude name="build.xml"/>
+    </fileset>
+
+    <target name="check-version-string">
+        <!-- Load XML into properties -->
+        <xmlproperty file="${zipsdir}/wickedteam_userupdate_update.xml" />
+
+        <!-- Check if the version information is found in update XML -->
+        <if>
+            <matches string="${updates.update.version}" pattern="${extension.version}"/>
+            <then>
+                <echo>Version information ${extension.version} found in update XML!</echo>
+            </then>
+            <else>
+                <echo>*********************!!! ATTENTION !!!*************************</echo>
+                <echo>Update file does not contain information about the new version!</echo>
+                <echo>***************************************************************</echo>
+                <fail>Error during build process!</fail>
+            </else>
+        </if>
+
+        <!-- Read changelog XML file -->
+        <xmlproperty file="${zipsdir}/changelog.xml"/>
+        <!-- Check if the version information is found in changelog XML -->
+        <if>
+            <matches string="${changelogs.changelog.version}" pattern="${extension.version}"/>
+            <then>
+                <echo>Version information ${extension.version} found in changelog XML!</echo>
+            </then>
+            <else>
+                <echo>************************!!! ATTENTION !!!*************************</echo>
+                <echo>Changelog file does not contain information about the new version!</echo>
+                <echo>******************************************************************</echo>
+                <fail>Error during build process!</fail>
+            </else>
+        </if>
+    </target>
+
+    <!-- ============================================	-->
+    <!-- Target: prepare                             	-->
+    <!-- ============================================	-->
+    <target name="prepare" description="Prepare for build" depends="check-version-string">
+        <echo msg="Preparing for version ${extension.version}" />
+        <mkdir dir="${zipsdir}" />
+        <mkdir dir="${joomladir}" />
+    </target>
+
+    <!-- ============================================	-->
+    <!-- (DEFAULT) Target: main							-->
+    <!-- ============================================	-->
+    <target name="main" description="main target" depends="prepare">
+
+        <!-- Copy module source files to joomla directory to show final file struture -->
+        <copy todir="${joomladir}/plugins/content/wickedteam_userupdate">
+            <fileset refid="plgfiles" />
+        </copy>
+
+        <!-- Create zip file for release -->
+        <zip destfile="${zipsdir}/${phing.project.name}-v${extension.version}.zip">
+            <fileset refid="zipfiles" />
+        </zip>
+    </target>
+
+    <!-- ============================================ 	-->
+    <!-- Target: Deploy 								-->
+    <!-- ============================================ 	-->
+    <target name = "deploy" description = "Deploy this package">
+        <delete dir = "${joomladir}" />
+        <phingcall target = "main" />
+    </target>
+</project>
