@@ -7,4 +7,21 @@
 			<item>First version, adapted from correponding Kandanda userupdate plugin</item>
 		</note>
 	</changelog>
+	<changelog>
+		<element>plg_content_wickedteam_userupdate</element>
+		<type>plugin</type>
+		<version>1.0.1</version>
+		<note>
+			<item>Adaption for WickedTeam ported to Joomla 4 using Joomla fields</item>
+		</note>
+	</changelog>
+	<changelog>
+		<element>plg_content_wickedteam_userupdate</element>
+		<type>plugin</type>
+		<version>2.0.0</version>
+		<note>
+			<item>Code refactoring and cleanup, added update server and changelog url, added new plugin parameters for more flexible configuration</item>
+			<item>Plugin is now compatible with Joomla 4 only, minimum version is now 2.0.0</item>
+		</note>
+	</changelog>
 </changelogs>

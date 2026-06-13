@@ -79,7 +79,7 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 	 * @param   bool     $isNew      A boolean which is set to true if the content is about to be created.
 	 * @return  void
 	 */
-	public function onContentAfterSave($context, $content, $isNew)
+	public function onContentBeforeSave($context, $content, $isNew)
 	{
 		// Don't run this plugin when a save is done not from Wickedteam component
 		if ($context != 'com_wickedteam.wickedteam' && $context != 'com_wickedteam.member')
@@ -165,22 +165,29 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 		// Fetch the field values which were submitted by Wickedteam edit form
 		$jinput = $this->app->input->get('jform', array(), 'array');
 
-
-		// Get all Wickedteam fields with its id and title and put it into an associative array
+		// Get all Wickedteam fields with its id, name and title and put it into associative arrays
 		$query->clear();
-		$query->select('a.title, a.id');
-		$query->from('#__wickedteam_fields AS a');
+		$query->select('a.title, a.id, a.name, a.type');
+		$query->from('#__fields AS a');
+		$query->where("a.context='com_wickedteam.member'");
 		$query->order('a.id');
 		$db->setQuery($query);
 		$results = $db->loadAssoclist();
 
-		// Initialize the dictionary (associative array)
-		$WickedteamMemberFields = array();
+		// Initialize the dictionaries (associative arrays)
+		$WickedteamMemberFieldsByName = array(); // name => ['id'=>..,'title'=>..,'type'=>..]
+		$WickedteamMemberFieldsById = array();   // id => name
+		$WickedteamMemberFieldTypeById = array(); // id => type
 
-		// Populate the dictionary with id as the key and title as the value
+		// Populate the dictionaries by field name and id
 		foreach ($results as $row)
 		{
-			$WickedteamMemberFields[$row['id']] = $row['title'];
+			if (!empty($row['name']))
+			{
+				$WickedteamMemberFieldsByName[$row['name']] = array('id' => $row['id'], 'title' => $row['title'], 'type' => $row['type']);
+				$WickedteamMemberFieldsById[$row['id']] = $row['name'];
+				$WickedteamMemberFieldTypeById[$row['id']] = $row['type'];
+			}
 		}
 
 		/**
@@ -197,84 +204,62 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 			 * First process Wickedteam field values (assigned groups are processed later)
 			 */
 			$query->clear();
-			$query->select('f.value, f.instance, a.title, a.alias, a.id');
-			$query->from('#__wickedteam_member_field_values AS f');
-			$query->leftjoin('#__wickedteam_fields AS a ON a.id = f.field_id');
-			$query->where('f.member_id = ' . $content->id);
+			$query->select('f.value, a.title, a.name, a.id');
+			$query->from('#__fields_values AS f');
+			$query->leftjoin('#__fields AS a ON a.id = f.field_id');
+			$query->where('f.item_id = ' . $content->id);
 			$query->order('a.id');
 			$db->setQuery($query);
 
 			$WickedteamMemberData = $db->loadAssoclist();
 
-
-			// print("<pre>");
-			// print_r($query->dump());
-			// print_r($WickedteamMemberData);
-
-			// print_r($jinput);
-			// print("</pre>"); //die();
-
-
-			/*
-			 * Generate array which holds the old data in a associative array which has
-			 * the following key syntax: alias_0_0=>value
-			 * The last number is incremented for each entry of the same alias
-			 */
-			$oldData = array();
-
-			foreach ($WickedteamMemberData as $data)
+			// Build name-indexed old-data map for Joomla 4 fields, to compare against jform['com_fields']
+			$oldDataByName = array();
+			$fieldTitleByName = array();
+			foreach ($WickedteamMemberData as $d)
 			{
-				$iInstance = $data['instance'];
-				$iIndex = 0;
-
-				while (array_key_exists("field-" . $data['id'] . '_' . $iInstance . '_' . $iIndex, $oldData))
+				if (!empty($d['name']))
 				{
-					$iIndex++;
+					$val = $d['value'];
+					$dec = json_decode($val, true);
+					$oldDataByName[$d['name']] = (json_last_error() === JSON_ERROR_NONE) ? $dec : $val;
+					$fieldTitleByName[$d['name']] = $d['title'];
 				}
-
-				$oldData["field-" . $data['id'] . '_' . $iInstance . '_' . $iIndex] = $data['value'];
 			}
-
-
-			// print("<pre>");
-			// print_r($oldData);
-			// print("</pre>"); //die();
-
 
 			$iChangeCounter = 0;
 			$buffer = "";
-			$regex = "#field-(\d+?)_\d+?_\d+?#s";
-			$matches = array();
 
-			foreach ($jinput as $key => $value)
+			if (isset($jinput['com_fields']) && is_array($jinput['com_fields']))
 			{
-				// If value itself is an array (e.g. if field is a select type) then the values are stored separated by "\n" in database
-				if (is_array($value))
+				foreach ($jinput['com_fields'] as $fname => $fval)
 				{
-					// Convert array to string separated by "\n"
-					$value = implode("\n", $value);
-				}
+					$old = array_key_exists($fname, $oldDataByName) ? $oldDataByName[$fname] : "";
+					$fieldType = isset($WickedteamMemberFieldsByName[$fname]['type']) ? $WickedteamMemberFieldsByName[$fname]['type'] : '';
 
-				// If values has changed and field is user defined(contains 'field-number_number_number', e.g. field-1_0_0)
-				if (preg_match($regex, $key, $matches) && (!array_key_exists($key, $oldData)|| $oldData[$key] != $value))
-				{
-					// If value is 0 and old value is empty then skip this field
-					// This is necessary because the Wickedteam component saves empty fields as 0
-					if($value == 0 && (!array_key_exists($key, $oldData) || $oldData[$key] == ""))
+					$normalizedOld = $this->normalizeWickedteamFieldValue($fname, $old, $fieldType, $WickedteamMemberFieldTypeById);
+					$normalizedNew = $this->normalizeWickedteamFieldValue($fname, $fval, $fieldType, $WickedteamMemberFieldTypeById);
+
+					$oldS = is_array($normalizedOld) ? json_encode($normalizedOld) : (string) $normalizedOld;
+					$newS = is_array($normalizedNew) ? json_encode($normalizedNew) : (string) $normalizedNew;
+
+					if ($oldS !== $newS)
 					{
-						continue;
+						if ($newS === "0" && $oldS === "")
+						{
+							continue;
+						}
+
+						$iChangeCounter++;
+						$title = isset($fieldTitleByName[$fname]) ? $fieldTitleByName[$fname] : $fname;
+								$buffer .= $title . ": " . $this->buildWickedteamFieldChangeDescription($normalizedOld, $normalizedNew, $WickedteamMemberFieldsById) . "\n";
 					}
-
-					$iChangeCounter++;
-
-					/**
-					 * Variable matches[1] contains the field id without '_number_number' postfix
-					 * in case of array data converted to strings divided by "\n" the "\n" are replaced by ","
-					 */
-					$buffer = $buffer . $WickedteamMemberFields[$matches[1]] . ": " .
-								 str_replace("\n", ", ", $oldData[$key]) . " => " . str_replace("\n", ", ", $value) . "\n";
 				}
 			}
+
+			// print("<pre>");
+			// print_r($buffer);
+			// print("</pre>"); die();
 
 			$this->checkSectionAssignment($content->id, $iChangeCounter, $buffer);
 		}
@@ -286,6 +271,7 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 
 			$buffer = $jinput['field-' . $id_lastname . '_0_0'] . " " . $jinput['field-' . $id_firstname . '_0_0'];
 		}
+
 
 		if ($iChangeCounter > 0)
 		{
@@ -319,8 +305,9 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 			 */
 			$id_lastname = $this->params->get('lastname_field', '');
 			$id_firstname = $this->params->get('firstname_field', '');
+			$memberName = trim($this->getWickedteamFieldValueById($jinput, $id_lastname, $WickedteamMemberFieldsById) . ' ' . $this->getWickedteamFieldValueById($jinput, $id_firstname, $WickedteamMemberFieldsById));
 
-			$body = JText::sprintf($isNew ? 'PLG_WICKEDTEAM_USERUPDATE_MEMBER_DATA_ADDED' : 'PLG_WICKEDTEAM_USERUPDATE_MEMBER_DATA_CHANGED', $user->name, $user->username, $user->email, iconv("UTF-8", "ASCII//TRANSLIT", $jinput['field-' . $id_lastname . '_0_0'] . " " . $jinput['field-' . $id_firstname . '_0_0']), iconv("UTF-8", "ASCII//TRANSLIT", $buffer));
+			$body = JText::sprintf($isNew ? 'PLG_WICKEDTEAM_USERUPDATE_MEMBER_DATA_ADDED' : 'PLG_WICKEDTEAM_USERUPDATE_MEMBER_DATA_CHANGED', $user->name, $user->username, $user->email, iconv("UTF-8", "ASCII//TRANSLIT", $memberName), iconv("UTF-8", "ASCII//TRANSLIT", $buffer));
 
 			$subject = JText::sprintf($isNew ? 'PLG_WICKEDTEAM_USERUPDATE_SUBJECT_MEMBER_DATA_ADDED' : 'PLG_WICKEDTEAM_USERUPDATE_SUBJECT_MEMBER_DATA_CHANGED');
 
@@ -358,11 +345,353 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 	}
 
 	/**
-	 * This method updates the email-address of assigned Joomla user to the changed
-	 * Wickedteam email-address. The Wickedteam field which holds the email-adress is configured via
-	 * a plugin parameter which is named 'email_field'.
+	 * Normalizes a Wickedteam field value for comparison.
 	 *
-	 * @param   JTableContent $content A reference to the JTableContent object that is being saved which holds the article data.
+	 * Handles nested repeatable values and normalizes field values by type
+	 * (dates, phone numbers, JSON structures, text, etc.).
+	 *
+	 * @param   string  $fieldName    The field name or nested key being normalized.
+	 * @param   mixed   $value        The raw field value.
+	 * @param   string  $fieldType    The field type used for type-specific normalization.
+	 * @param   array   $fieldTypeMap Mapping of field IDs to field types for nested keys.
+	 * @return  mixed  The normalized field value.
+	 */
+	private function normalizeWickedteamFieldValue($fieldName, $value, $fieldType = '', array $fieldTypeMap = array())
+	{
+		$fieldType = strtolower((string) $fieldType);
+
+		if (is_array($value))
+		{
+			$normalized = array();
+			foreach ($value as $key => $item)
+			{
+				$nestedFieldType = $fieldType;
+				if (preg_match('/^field(\d+)$/', $key, $matches))
+				{
+					$nestedFieldType = $this->getWickedteamFieldTypeById($matches[1], $fieldTypeMap);
+				}
+
+				$normalized[$key] = $this->normalizeWickedteamFieldValue($key, $item, $nestedFieldType, $fieldTypeMap);
+			}
+
+			return $normalized;
+		}
+
+		$value = (string) $value;
+		$fieldType = strtolower($fieldType);
+
+		if (in_array($fieldType, array('calendar', 'date', 'datetime', 'datetime-local'), true))
+		{
+			return $this->normalizeWickedteamFieldDate($value);
+		}
+
+		if (in_array($fieldType, array('tel', 'phone', 'phonenumber'), true))
+		{
+			return $this->normalizePhoneNumber($value);
+		}
+
+		if (in_array($fieldType, array('text', 'textarea'), true))
+		{
+			return $value;
+		}
+
+		$value = trim($value);
+		$value = preg_replace('/\s+/', ' ', $value);
+
+		$json = json_decode($value, true);
+		if (json_last_error() === JSON_ERROR_NONE)
+		{
+			return $this->normalizeWickedteamFieldValue($fieldName, $json, $fieldType, $fieldTypeMap);
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Builds a human-readable change description for a single field.
+	 *
+	 * If the value is an array, a nested array diff is generated.
+	 * Otherwise the old and new scalar values are rendered for comparison.
+	 *
+	 * @param   mixed  $oldValue      The original field value.
+	 * @param   mixed  $newValue      The new field value.
+	 * @param   array  $fieldIdToName A map from field IDs to field names for repeatable keys.
+	 * @return  string
+	 */
+	private function buildWickedteamFieldChangeDescription($oldValue, $newValue, array $fieldIdToName = array())
+	{
+		if (is_array($oldValue) || is_array($newValue))
+		{
+			return $this->buildWickedteamArrayChangeDescription((array) $oldValue, (array) $newValue, $fieldIdToName);
+		}
+
+		return $this->stringifyWickedteamValue($oldValue) . ' => ' . $this->stringifyWickedteamValue($newValue);
+	}
+
+	/**
+	 * Builds a change description for array values and nested repeatable rows.
+	 *
+	 * Only changed subkeys are included in the result, with field IDs
+	 * resolved to configured field names where possible.
+	 *
+	 * @param   array  $oldArray      The original array value.
+	 * @param   array  $newArray      The new array value.
+	 * @param   array  $fieldIdToName Map from field IDs to field names.
+	 * @return  string
+	 */
+	private function buildWickedteamArrayChangeDescription(array $oldArray, array $newArray, array $fieldIdToName = array())
+	{
+		$keys = array_unique(array_merge(array_keys($oldArray), array_keys($newArray)));
+		$changes = array();
+
+		foreach ($keys as $key)
+		{
+			$oldItem = array_key_exists($key, $oldArray) ? $oldArray[$key] : null;
+			$newItem = array_key_exists($key, $newArray) ? $newArray[$key] : null;
+
+			if ($this->areWickedteamValuesEqual($oldItem, $newItem))
+			{
+				continue;
+			}
+
+			if (is_array($oldItem) || is_array($newItem))
+			{
+				$changes[] = $key . ': ' . $this->renderWickedteamRowContent((array) $oldItem, $fieldIdToName) . ' => ' . $this->renderWickedteamRowContent((array) $newItem, $fieldIdToName);
+			}
+			else
+			{
+				$changes[] = $key . ': ' . $this->stringifyWickedteamValue($oldItem) . ' => ' . $this->stringifyWickedteamValue($newItem);
+			}
+		}
+
+		return !empty($changes) ? implode('; ', $changes) : $this->stringifyWickedteamValue($oldArray) . ' => ' . $this->stringifyWickedteamValue($newArray);
+	}
+
+	/**
+	 * Compares two Wickedteam values for equality.
+	 *
+	 * This handles both scalar values and nested arrays recursively.
+	 *
+	 * @param   mixed  $a
+	 * @param   mixed  $b
+	 * @return  bool
+	 */
+	private function areWickedteamValuesEqual($a, $b)
+	{
+		if (is_array($a) || is_array($b))
+		{
+			return $this->areWickedteamArraysEqual((array) $a, (array) $b);
+		}
+
+		return (string) $a === (string) $b;
+	}
+
+	/**
+	 * Recursively compares two Wickedteam arrays for equality.
+	 *
+	 * This is used when normalizing and diffing repeatable values.
+	 *
+	 * @param   array  $a
+	 * @param   array  $b
+	 * @return  bool
+	 */
+	private function areWickedteamArraysEqual(array $a, array $b)
+	{
+		if (count($a) !== count($b))
+		{
+			return false;
+		}
+
+		foreach ($a as $key => $value)
+		{
+			if (!array_key_exists($key, $b) || !$this->areWickedteamValuesEqual($value, $b[$key]))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Renders a repeatable row as a human-readable string.
+	 *
+	 * Field key names like field24 are replaced with configured field names
+	 * when a mapping is available.
+	 *
+	 * @param   array  $row           The row data to render.
+	 * @param   array  $fieldIdToName Field ID to name mapping.
+	 * @return  string
+	 */
+	private function renderWickedteamRowContent(array $row, array $fieldIdToName = array())
+	{
+		$parts = array();
+
+		foreach ($row as $key => $value)
+		{
+			$displayKey = $this->resolveWickedteamFieldDisplayName($key, $fieldIdToName);
+
+			if (is_array($value))
+			{
+				$parts[] = $displayKey . '=(' . $this->renderWickedteamRowContent($value, $fieldIdToName) . ')';
+			}
+			else
+			{
+				$parts[] = $displayKey . '="' . $this->escapeWickedteamString((string) $value) . '"';
+			}
+		}
+
+		return implode(', ', $parts);
+	}
+
+	/**
+	 * Resolves a nested repeatable field key to its configured field name.
+	 *
+	 * Example: field24 becomes the actual field name for ID 24.
+	 *
+	 * @param   string  $fieldKey      The nested field key.
+	 * @param   array   $fieldIdToName Map from field IDs to field names.
+	 * @return  string
+	 */
+	private function resolveWickedteamFieldDisplayName($fieldKey, array $fieldIdToName = array())
+	{
+		if (preg_match('/^field(\d+)$/', $fieldKey, $matches))
+		{
+			$fieldId = $matches[1];
+			if (isset($fieldIdToName[$fieldId]))
+			{
+				return $fieldIdToName[$fieldId];
+			}
+		}
+
+		return $fieldKey;
+	}
+
+	/**
+	 * Converts a Wickedteam value into a printable scalar string.
+	 *
+	 * Arrays are JSON encoded, while scalars are cleaned of control characters.
+	 *
+	 * @param   mixed  $value
+	 * @return  string
+	 */
+	private function stringifyWickedteamValue($value)
+	{
+		if (is_array($value))
+		{
+			return json_encode($value);
+		}
+
+		return str_replace(array("\r", "\n", "\t"), array('', ' ', ' '), (string) $value);
+	}
+
+	/**
+	 * Escapes a string for inline output in a Wickedteam row description.
+	 *
+	 * Removes line breaks and tabs while preserving the visible value.
+	 *
+	 * @param   mixed  $value
+	 * @return  string
+	 */
+	private function escapeWickedteamString($value)
+	{
+		return str_replace(array("\r", "\n", "\t"), array('', ' ', ' '), trim((string) $value));
+	}
+
+	/**
+	 * Normalizes date values to a stable YYYY-MM-DD format.
+	 *
+	 * Supports several source formats used by Wickedteam fields.
+	 *
+	 * @param   mixed  $value
+	 * @return  string
+	 */
+	private function normalizeWickedteamFieldDate($value)
+	{
+		$value = trim((string) $value);
+		if ($value === '')
+		{
+			return '';
+		}
+
+		$formats = array('Y-m-d H:i:s', 'Y-m-d', 'd.m.Y', 'd.m.Y H:i:s', '\Y-m-d\TH:i:sP', '\Y-m-d\TH:i:s');
+		foreach ($formats as $format)
+		{
+			$date = DateTime::createFromFormat($format, $value);
+			if ($date && $date->format($format) === $value)
+			{
+				return $date->format('Y-m-d');
+			}
+		}
+
+		$date = date_create($value);
+		if ($date)
+		{
+			return $date->format('Y-m-d');
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Normalizes phone numbers by removing non-digit and non-plus characters.
+	 *
+	 * @param   mixed  $value
+	 * @return  string
+	 */
+	private function normalizePhoneNumber($value)
+	{
+		return preg_replace('/[^0-9+]/', '', (string) $value);
+	}
+
+	/**
+	 * Returns the configured Wickedteam field type for a nested field ID.
+	 *
+	 * @param   mixed  $fieldId
+	 * @param   array  $fieldTypeMap
+	 * @return  string
+	 */
+	private function getWickedteamFieldTypeById($fieldId, array $fieldTypeMap = array())
+	{
+		$fieldId = (string) $fieldId;
+		return isset($fieldTypeMap[$fieldId]) ? $fieldTypeMap[$fieldId] : '';
+	}
+
+	/**
+	 * Reads a Wickedteam field value by field ID from submitted input.
+	 *
+	 * Supports both modern Joomla field name arrays and legacy field-<id> keys.
+	 *
+	 * @param   array   $jinput        The submitted jform array.
+	 * @param   mixed   $fieldId       The field ID to resolve.
+	 * @param   array   $fieldIdToName Optional map from field IDs to field names.
+	 * @return  mixed
+	 */
+	private function getWickedteamFieldValueById(array $jinput, $fieldId, array $fieldIdToName = array())
+	{
+		$fieldId = (string) $fieldId;
+		if ($fieldId === '')
+		{
+			return '';
+		}
+
+		if (!empty($fieldIdToName[$fieldId]) && isset($jinput['com_fields'][$fieldIdToName[$fieldId]]))
+		{
+			return $jinput['com_fields'][$fieldIdToName[$fieldId]];
+		}
+
+		$key = 'field-' . $fieldId . '_0_0';
+		return isset($jinput[$key]) ? $jinput[$key] : '';
+	}
+
+	/**
+	 * Updates the Joomla user's email address when the assigned Wickedteam email field changes.
+	 *
+	 * The field used for the Wickedteam email address is configured via the
+	 * plugin parameter 'email_field'. If the new Wickedteam email differs from
+	 * the current Joomla email and is valid, the Joomla user record is updated.
+	 *
+	 * @param   JTableContent $content The current Wickedteam content item.
 	 * @return  void
 	 */
 	private function updateJoomlaUserData($content)
@@ -375,6 +704,7 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 
 		// Get plugin parameter for Wickedteam field which is used for storing member emails
 		$mailField = $this->params->get('email_field', '');
+		$mailFieldValue = $this->getWickedteamFieldValueById($jinput, $mailField);
 
 		$query->clear();
 
@@ -388,7 +718,7 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 		$result = $db->loadAssoc();
 
 		// Get value of the currently stored email field (base field is used)
-		$newWickedteamEmail = $jinput['field-' . $mailField . '_0_0'];
+		$newWickedteamEmail = $mailFieldValue;
 
 		// Get the value of the currently assigned joomla member email address
 		$joomlaEmail = $result['email'];
@@ -397,7 +727,6 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 		$joomlaUserId = $content->user_id;
 
 		// Check if new Wickedteam email address is a valid email address
-
 		if (!MailHelper::isEmailAddress($newWickedteamEmail))
 		{
 			$this->app->enqueueMessage(JText::_('PLG_WICKEDTEAM_USERUPDATE_INVALID_EMAIL'), 'warning');
@@ -452,15 +781,10 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 		$query->from('#__wickedteam_member_category AS m');
 		$query->leftjoin('#__categories AS c ON c.id = m.catid');
 		$query->where('m.member_id = ' . $memberId);
+		$query->where('c.published = 1');
 		$query->order('c.id');
 		$db->setQuery($query);
 		$wickedteamOldSectionData = $db->loadAssoclist();
-
-		/**
-		 * print("<pre>");
-		 * print_r($wickedteamOldSectionData);
-		 * print("</pre>"); die();
-		 */
 
 		// If 'sections' key exists in array (only if user is allowed to change section assignments)
 		if (array_key_exists('sections', $jinput))
@@ -474,17 +798,11 @@ class PlgContentWickedteam_Userupdate extends CMSPlugin
 			$db->setQuery($query);
 			$wickedteamNewSectionData = $db->loadAssoclist();
 		}
-
-		elseif ($wickedteamParams->get('edit_club_section') == 0)
+		else
 		{
 			// New section assignment is equal to old section assignment
 			$wickedteamNewSectionData = $wickedteamOldSectionData;
 		}
-
-		/** print("<pre>");
-		 * print_r($wickedteamNewSectionData);
-		 * print("</pre>"); die();
-		 */
 
 		// Array to hold new added member sections
 		$added = array();

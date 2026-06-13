@@ -12,4 +12,30 @@
 		<targetplatform name="joomla" version="3"/>
 		<client>site</client>
 	</update>
+	<update>
+		<name>WickedTeam Userupdate</name>
+		<description>Plugin for sending emails if WickedTeam memberdata is changed or newly inserted</description>
+		<element>plg_content_wickedteam_userupdate</element>
+		<type>plugin</type>
+		<version>1.0.1</version>
+		<changelogurl>https://rawcdn.githack.com/heinchrs/plg_content_wickedteam_userupdate/main/.release/changelog.xml</changelogurl>
+		<downloads>
+			<downloadurl type="full" format="zip">https://raw.githubusercontent.com/heinchrs/plg_content_wickedteam_userupdate/main/.release/plg_content_wickedteam_userupdate-v1.0.1.zip</downloadurl>
+		</downloads>
+		<targetplatform name="joomla" version="3"/>
+		<client>site</client>
+	</update>
+	<update>
+		<name>WickedTeam Userupdate</name>
+		<description>Plugin for sending emails if WickedTeam memberdata is changed or newly inserted</description>
+		<element>plg_content_wickedteam_userupdate</element>
+		<type>plugin</type>
+		<version>2.0.0</version>
+		<changelogurl>https://rawcdn.githack.com/heinchrs/plg_content_wickedteam_userupdate/main/.release/changelog.xml</changelogurl>
+		<downloads>
+			<downloadurl type="full" format="zip">https://raw.githubusercontent.com/heinchrs/plg_content_wickedteam_userupdate/main/.release/plg_content_wickedteam_userupdate-v2.0.0.zip</downloadurl>
+		</downloads>
+		<targetplatform name="joomla" version="4"/>
+		<client>site</client>
+	</update>
 </updates>

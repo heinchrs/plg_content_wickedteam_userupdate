@@ -1,11 +1,20 @@
 # Joomla plugin <plg_content_wickedteam_userupdate>
 
 ## Description
-
 This project builds a plugin called **WickedTeam Userupdate** for the content management system [Joomla](https://www.joomla.org/).
 The plugin requires in Joomla an installation of the [WickedTeam-Component](https://shop.wicked-software.de/).
 Using this plugin, it is possible to send emails if Wickedteam memberdata is changed or newly inserted.
 
+The plugin is designed for Joomla 4 and compares submitted field values from `jform['com_fields']` against stored values in the database.
+It loads Wickedteam custom field metadata from `#__fields`, reads previous values from `#__fields_values`, normalizes them by field type, and reports only actual changes.
+
+Key behavior:
+- listens to `onContentBeforeSave` for Wickedteam member save events
+- loads Wickedteam fields from `#__fields`
+- compares submitted `jform['com_fields']` values with stored `#__fields_values`
+- normalizes dates, phone numbers and JSON/repeatable structures
+- resolves repeatable inner keys like `field24` to actual field names where possible
+- optionally updates the assigned Joomla user's email when the configured Wickedteam email field changes
 
 ## Folder structure
 - .release -> contains the installation archive of joomla plugin and the corresponding update and changelog XML

@@ -5,7 +5,7 @@
 
     <property name="srcdir" value="./src" override="true" />
 
-    <property name="joomladir" value="./joomla" override="true" />
+    <property name="joomladir" value="/xampp/htdocs/HomepageSRK" override="true" />
 
     <property name="zipsdir" value=".release" override="true" />
 
