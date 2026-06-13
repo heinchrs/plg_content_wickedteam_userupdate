@@ -22,6 +22,8 @@
 		<note>
 			<item>Code refactoring and cleanup, added update server and changelog url, added new plugin parameters for more flexible configuration</item>
 			<item>Plugin is now compatible with Joomla 4 only, minimum version is now 2.0.0</item>
+			<item>Improved change detection for Joomla 4 Wickedteam fields, including normalized date/phone handling and repeatable field row diffs</item>
+			<item>Repeatable field updates now show only changed row columns and resolve nested field IDs to actual field names</item>
 		</note>
 	</changelog>
 </changelogs>

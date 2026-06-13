@@ -37,7 +37,7 @@
 			</fieldset>
 		</fields>
 	</config>
-	<changelogurl>https://raw.githubusercontent.com/heinchrs/plg_content_wickedteam_userupdate/master/.release/changelog.xml</changelogurl>
+	<changelogurl>https://raw.githubusercontent.com/heinchrs/plg_content_wickedteam_userupdate/main/.release/changelog.xml</changelogurl>
 	<updateservers>
 		<server name="Wickedteam Userupdate update server" type="extension" priority="1">
 			https://raw.githubusercontent.com/heinchrs/plg_content_wickedteam_userupdate/master/.release/wickedteam_userupdate_update.xml
