@@ -35,7 +35,7 @@
 		<downloads>
 			<downloadurl type="full" format="zip">https://raw.githubusercontent.com/heinchrs/plg_content_wickedteam_userupdate/main/.release/plg_content_wickedteam_userupdate-v2.0.0.zip</downloadurl>
 		</downloads>
-		<targetplatform name="joomla" version="4"/>
+		<targetplatform name="joomla" version="[4-9].*" />
 		<client>site</client>
 	</update>
 </updates>
